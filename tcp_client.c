@@ -14,7 +14,8 @@ struct server_info {
   int port;
 };
 
-struct server_info get_option(int argc, char *argv[]);
+struct server_info get_info(int argc, char *argv[]);
+socklen_t sockaddr(char *host, int port, struct sockaddr_storage *ss);
 
 int main(int argc, char *argv[])
 {
@@ -22,38 +23,35 @@ int main(int argc, char *argv[])
   int s;
   int n;
   char buf[255];
-  struct sockaddr_in6 server;
-  struct server_info info = get_option(argc, argv);
+  struct sockaddr_storage ss;
+  struct sockaddr *sa;
+  struct server_info info = get_info(argc, argv);
+  socklen_t size;
  
   printf("b: %s\n", info.host);
   printf("p: %d\n", info.port);
- 
-  sock  = socket(AF_INET6, SOCK_STREAM,  0);
+  
+  size = sockaddr(info.host, info.port, &ss);
+  
+  sa = (struct sockaddr *)&ss;
+  sock  = socket(sa->sa_family, SOCK_STREAM,  0);
   if (sock < 0) {
     perror("socket");
     return -1;
   }
-  server.sin6_family = AF_INET6;
-  server.sin6_port = htons(info.port);
-  s = inet_pton(AF_INET6, info.host,  &server.sin6_addr);
-
-  if (s < 1){
-    perror("inet_pton");
-    return -1;
-  }
-
-  if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0){
+  
+  if (connect(sock, sa, size) < 0){
     perror("connect");
     return -1;
   }
 
   memset(buf, 0,  sizeof(buf));
   n = read(sock,  buf,  sizeof(buf));
-  printf("%s¥n",  buf);
+  printf("response: %s\n",  buf);
   return 0;
 }
 
-struct server_info get_option(int argc, char *argv[]){
+struct server_info get_info(int argc, char *argv[]){
   int result;
   char *host;
   int port;
@@ -72,4 +70,21 @@ struct server_info get_option(int argc, char *argv[]){
 
   struct server_info info = {host, port};
   return info;
+}
+
+// connectの際にsizeが必要なため返り値でそのサイズを返すことにした。
+socklen_t sockaddr(char *host, int port, struct sockaddr_storage *ss){
+  if (inet_pton(AF_INET, host, &((struct sockaddr_in *)ss)->sin_addr)){
+    ((struct sockaddr_in *)ss)->sin_family = AF_INET;
+    ((struct sockaddr_in *)ss)->sin_port = htons(port);
+    return sizeof(*((struct sockaddr_in *)ss));
+  }else if(inet_pton(AF_INET6, host, &((struct sockaddr_in6 *)ss)->sin6_addr)){
+    ((struct sockaddr_in6 *)ss)->sin6_family = AF_INET6;
+    ((struct sockaddr_in6 *)ss)->sin6_port = htons(port);
+    return sizeof(*((struct sockaddr_in6 *)ss));
+  }else{
+    printf("invalid host. please confirm the value of -b\n");
+    perror("sockaddr");
+    exit(1);
+  }
 }
